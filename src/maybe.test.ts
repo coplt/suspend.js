@@ -1,4 +1,4 @@
-import { Continue, Suspend, ReadySuspend, SuspendState } from './co'
+import { Continue, Suspend, ReadySuspend } from './co'
 
 type Maybe<T> = { val: T } | null
 
