@@ -44,3 +44,84 @@ test('maybe 2', () => {
     expect(i).toBe(1)
     expect(r).toEqual(null)
 })
+
+test('maybe err 1', () => {
+    let i = 0
+    try {
+        Maybe.maybe<string>(() => {
+            i++
+            return Maybe.bind(
+                { val: 1 },
+                new Continue(() => {
+                    i++
+                    throw 'err'
+                })
+            )
+        })
+        throw 'never'
+    } catch (e) {
+        expect(i).toBe(2)
+        expect(e).toBe('err')
+    }
+})
+
+test('maybe err 2', () => {
+    let i = 0
+    try {
+        Maybe.maybe<string>(() => {
+            i++
+            return Maybe.bind(
+                null,
+                new Continue(() => {
+                    i++
+                    throw 'err'
+                })
+            )
+        })
+        throw 'never'
+    } catch (e) {
+        expect(i).toBe(1)
+        expect(e).toBe('never')
+    }
+})
+
+test('maybe err 3', () => {
+    let i = 0
+    try {
+        Maybe.maybe<string>(co => {
+            i++
+            return Maybe.bind(
+                { val: 1 },
+                new Continue(() => {
+                    i++
+                    return co.error('err')
+                })
+            )
+        })
+        throw 'never'
+    } catch (e) {
+        expect(i).toBe(2)
+        expect(e).toBe('err')
+    }
+})
+
+test('maybe err 4', () => {
+    let i = 0
+    try {
+        Maybe.maybe<string>(co => {
+            i++
+            if (i == 1) throw 'err'
+            return Maybe.bind(
+                { val: 1 },
+                new Continue(() => {
+                    i++
+                    return co.error('never2')
+                })
+            )
+        })
+        throw 'never1'
+    } catch (e) {
+        expect(i).toBe(1)
+        expect(e).toBe('err')
+    }
+})

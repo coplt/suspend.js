@@ -7,8 +7,8 @@ export class Continue<T, R = T> {
     delay(f: () => T): Suspend<R> {
         return new ContinueSuspend(() => this.then(f()))
     }
-    error(err: any): Suspend<R> {
-        return new ErrorSuspend<R>(err)
+    error(err: any): Suspend<never> {
+        return new ErrorSuspend<never>(err)
     }
 }
 
