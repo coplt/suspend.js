@@ -1,0 +1,29 @@
+{
+  "name": "@coplt/suspend",
+  "version": "0.1.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "jest --coverage"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/coplt/suspend.js.git"
+  },
+  "author": "",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/coplt/suspend.js/issues"
+  },
+  "homepage": "https://github.com/coplt/suspend.js#readme",
+  "devDependencies": {
+    "@types/jest": "^28.1.4",
+    "jest": "^28.1.2",
+    "ts-jest": "^28.0.5",
+    "ts-node": "^10.8.1",
+    "typescript": "^4.7.4"
+  },
+  "dependencies": {
+    "tslib": "^2.4.0"
+  }
+}
