@@ -4,6 +4,7 @@
 name: Node.js Package
 
 on:
+  workflow_dispatch:
   release:
     types: [created]
 
@@ -16,7 +17,12 @@ jobs:
         with:
           node-version: 16
       - run: npm ci
+      - run: npm run build
       - run: npm test
+      - uses: actions/upload-artifact@v3
+        with:
+          name: dist
+          path: dist
 
   publish-npm:
     needs: build
@@ -29,6 +35,9 @@ jobs:
           node-version: 16
           registry-url: https://registry.npmjs.org/
       - run: npm ci
+      - uses: actions/download-artifact@v3
+        with:
+          name: dist
       - run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{secrets.npm_token}}
