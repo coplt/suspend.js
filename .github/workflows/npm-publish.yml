@@ -23,6 +23,10 @@ jobs:
         with:
           name: dist
           path: dist
+      - uses: actions/upload-artifact@v3
+        with:
+          name: types
+          path: types
 
   publish-npm:
     needs: build
@@ -38,6 +42,11 @@ jobs:
       - uses: actions/download-artifact@v3
         with:
           name: dist
+          path: dist
+      - uses: actions/download-artifact@v3
+        with:
+          name: types
+          path: types
       - run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{secrets.npm_token}}
