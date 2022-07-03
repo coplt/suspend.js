@@ -62,3 +62,19 @@ test('async err 2', async () => {
         expect(e).toBe('err')
     }
 })
+
+test('async err 3', async () => {
+    try {
+        await Async.run<number>(co => {
+            return Async.await(
+                Promise.reject('err'),
+                new Continue(() => {
+                    return co.suspend(1)
+                })
+            )
+        })
+        throw 'never'
+    } catch (e) {
+        expect(e).toBe('err')
+    }
+})

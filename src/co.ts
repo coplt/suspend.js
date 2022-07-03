@@ -12,94 +12,109 @@ export class Continue<T, R = T> {
     }
 }
 
-export enum SuspendState {
-    Suspend = 0,
-    Pending = 1,
-    Ready = 2,
-    Error = -1,
-}
+export type ResumeResult<R> = {
+    take(): R
+} & ({ readonly val: R } | { readonly err: unknown })
+
+export type SuspendResume<R> =
+    | Suspend<R>
+    | {
+          readonly pending: true
+          on(e: 'wake', cb: () => void): void
+      }
+    | {
+          readonly pending: false
+          readonly result: ResumeResult<R>
+      }
 
 export interface Suspend<R> {
-    resume(): Suspend<R>
-    readonly state: SuspendState
-    readonly val?: R
-    readonly err?: unknown
-    waker?(cb: () => void): void
+    resume(): SuspendResume<R>
 }
 
-export class ReadySuspend<R> implements Suspend<R> {
+export class ReadyResult<R> {
     constructor(public val: R) {}
-    state = SuspendState.Ready
-
-    resume(): Suspend<R> {
-        return this
+    take(): R {
+        return this.val
     }
 }
 
-export class ErrorSuspend<R> implements Suspend<R> {
-    constructor(public err: any) {}
-    state = SuspendState.Error
+export class ErrorResult<R> {
+    constructor(public err: unknown) {}
+    take(): R {
+        throw this.err
+    }
+}
 
-    resume(): Suspend<R> {
-        return this
+export abstract class ResultResume<R> {
+    constructor(public result: ResumeResult<R>) {}
+    pending: false = false
+}
+
+export class ReadyResume<R> extends ResultResume<R> {
+    constructor(public val: R) {
+        super(new ReadyResult<R>(val))
+    }
+}
+
+export class ErrorResume<R> extends ResultResume<R> {
+    constructor(public err: unknown) {
+        super(new ErrorResult<R>(err))
+    }
+}
+
+export abstract class ResultSuspend<R> implements Suspend<R> {
+    constructor(public result: ResultResume<R>) {}
+    resume(): SuspendResume<R> {
+        return this.result
+    }
+}
+
+export class ReadySuspend<R> extends ResultSuspend<R> {
+    constructor(public val: R) {
+        super(new ReadyResume<R>(val))
+    }
+}
+
+export class ErrorSuspend<R> extends ResultSuspend<R> {
+    constructor(public err: unknown) {
+        super(new ErrorResume<R>(err))
     }
 }
 
 export class ContinueSuspend<R> implements Suspend<R> {
     constructor(public calc: () => Suspend<R>) {}
-    state = SuspendState.Suspend
-    err?: any
-    next?: Suspend<R>
+    #resume?: SuspendResume<R>
 
-    resume(): Suspend<R> {
-        switch (this.state) {
-            case SuspendState.Ready:
-                return this.next!
-            case SuspendState.Error:
-                return this
-            case SuspendState.Suspend:
-                try {
-                    this.next = this.calc()
-                    this.state = SuspendState.Ready
-                    return this.next
-                } catch (e) {
-                    this.state = SuspendState.Error
-                    this.err = e
-                    return this
-                }
-            case SuspendState.Pending:
-                throw 'Unexpected state Pending'
-            default:
-                throw 'Unknown suspend status'
+    resume(): SuspendResume<R> {
+        if (!this.#resume) {
+            try {
+                this.#resume = this.calc()
+            } catch (err) {
+                this.#resume = new ErrorResume<R>(err)
+            }
         }
+        return this.#resume
     }
 }
 
-export type FutureWakerResult<R> = { next: Suspend<R> } | { err: any }
-
-export type FutureWaker<R> = (res: FutureWakerResult<R>) => void
-
-export class FutureSuspend<R> implements Suspend<R> {
-    constructor(public calc: (wake: FutureWaker<R>) => void) {}
-    state = SuspendState.Suspend
-    next?: Suspend<R>
-    err?: any
-    wakes?: (() => void)[]
-    waker(cb: () => void): void {
-        if (!this.wakes) this.wakes = []
-        this.wakes.push(cb)
+export class FutureResume<R> {
+    constructor(calc: (wake: FutureWaker<R>) => void, waker: FutureWaker<R>) {
+        calc(res => {
+            waker(res)
+            this.#wake()
+        })
     }
-    wake(res: FutureWakerResult<R>) {
-        if ('next' in res) {
-            this.state = SuspendState.Ready
-            this.next = res.next
-        } else {
-            this.state = SuspendState.Error
-            this.next = res.err
+    pending: true = true
+    #wakes?: Set<() => void>
+    on(e: 'wake', cb: () => void): void {
+        if (e == 'wake') {
+            if (!this.#wakes) this.#wakes = new Set<() => void>()
+            this.#wakes.add(cb)
         }
-
-        const wakes = this.wakes
-        delete this.wakes
+    }
+    #wake() {
+        const wakes = this.#wakes
+        this.#wakes = void 0
         if (wakes) {
             for (const cb of wakes) {
                 try {
@@ -110,26 +125,24 @@ export class FutureSuspend<R> implements Suspend<R> {
             }
         }
     }
+}
 
-    resume(): Suspend<R> {
-        switch (this.state) {
-            case SuspendState.Pending:
-            case SuspendState.Error:
-                return this
-            case SuspendState.Ready:
-                return this.next!
-            case SuspendState.Suspend:
-                this.state = SuspendState.Pending
-                try {
-                    this.calc(res => this.wake(res))
-                } catch (e) {
-                    this.state = SuspendState.Error
-                    this.err = e
-                }
-                return this
-            default:
-                throw 'Unknown suspend status'
+export type FutureWaker<R> = (res: SuspendResume<R>) => void
+
+export class FutureSuspend<R> implements Suspend<R> {
+    constructor(public calc: (wake: FutureWaker<R>) => void) {}
+
+    #resume?: SuspendResume<R>
+
+    resume(): SuspendResume<R> {
+        if (!this.#resume) {
+            try {
+                this.#resume = new FutureResume<R>(this.calc, res => (this.#resume = res))
+            } catch (err) {
+                this.#resume = new ErrorResume<R>(err)
+            }
         }
+        return this.#resume
     }
 }
 
@@ -137,18 +150,16 @@ export namespace Suspend {
     /** Sync calc */
     export function calc<R>(suspend: Suspend<R>): R {
         for (;;) {
-            suspend = suspend.resume()
-            switch (suspend.state) {
-                case SuspendState.Suspend:
-                    continue
-                case SuspendState.Ready:
-                    return suspend.val!
-                case SuspendState.Error:
-                    throw suspend.err!
-                case SuspendState.Pending:
+            const resume = suspend.resume()
+            if ('pending' in resume) {
+                if (resume.pending) {
                     throw 'Futured suspend are not supported'
-                default:
-                    throw 'Unknown suspend status'
+                } else {
+                    return resume.result.take()
+                }
+            } else {
+                suspend = resume
+                continue
             }
         }
     }

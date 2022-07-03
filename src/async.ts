@@ -1,4 +1,4 @@
-import { Continue, FutureSuspend, ReadySuspend, Suspend, SuspendState } from './co'
+import { Continue, FutureSuspend, ReadySuspend, ErrorResume, Suspend } from './co'
 
 export class Async {
     static run<R>(f: (co: Continue<R | Promise<R>>) => Suspend<R | Promise<R>>): Promise<R> {
@@ -10,17 +10,17 @@ export class Async {
             try {
                 r = await p
             } catch (err) {
-                wake({ err })
+                wake(new ErrorResume<R>(err))
                 return
             }
-            wake({ next: co.suspend(r) })
+            wake(co.suspend(r))
         })
     }
 
     static delay<R>(ms: number, co: Continue<void, R | Promise<R>>): Suspend<R | Promise<R>> {
         return new FutureSuspend(wake => {
             setTimeout(() => {
-                wake({ next: co.suspend() })
+                wake(co.suspend())
             }, ms)
         })
     }
@@ -30,20 +30,19 @@ export namespace Async {
     /** Async calc */
     export async function calc<R>(suspend: Suspend<R | Promise<R>>): Promise<R> {
         for (;;) {
-            suspend = suspend.resume()
-            switch (suspend.state) {
-                case SuspendState.Suspend:
+            const resume = suspend.resume()
+            if ('pending' in resume) {
+                if (resume.pending) {
+                    await new Promise<void>(res => {
+                        resume.on('wake', res)
+                    })
                     continue
-                case SuspendState.Ready:
-                    return suspend.val!
-                case SuspendState.Error:
-                    throw suspend.err!
-                case SuspendState.Pending:
-                    if (!suspend.waker) throw 'Wrong Suspend implementation, Pending does not implement waker'
-                    await new Promise<void>(res => suspend.waker!(res))
-                    continue
-                default:
-                    throw 'Unknown suspend status'
+                } else {
+                    return resume.result.take()
+                }
+            } else {
+                suspend = resume
+                continue
             }
         }
     }
